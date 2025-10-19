@@ -31,7 +31,10 @@ def create_app():
     api.register_blueprint(weather_blp)
     return app
 
+# Create app instance for hypercorn
+app = create_app()
 
 if __name__ == "__main__":
-    app = create_app()
-    app.run(debug=True, port=5000)
+    # Use hypercorn for ASGI async support: hypercorn app:app --bind 0.0.0.0:5000
+    # For development with Flask dev server:
+    app.run(debug=True, port=5000, use_reloader=False)

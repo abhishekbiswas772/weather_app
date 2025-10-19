@@ -22,7 +22,7 @@ class WeatherService:
 
     @classmethod
     async def create(cls):
-        redis_client = await get_redis_client()
+        redis_client = get_redis_client()
         return cls(redis_client)
 
     def _save_weather_to_db(self, data):
@@ -104,24 +104,39 @@ class WeatherService:
 
         try:
             cache_key = f"weather:{lat}:{long}"
-            cached_data = await self.redis_client.get(cache_key)
+            # Use thread pool for synchronous Redis operations
+            cached_data = await asyncio.to_thread(self.redis_client.get, cache_key)
 
             if cached_data:
+                # Return cached data directly without DB operations
                 data = json.loads(cached_data)
+                # Create a Weather object from cached data without saving to DB
+                weather = Weather(
+                    query_cost=data.get('queryCost'),
+                    latitude=data.get('latitude'),
+                    longitude=data.get('longitude'),
+                    resolved_address=data.get('resolvedAddress'),
+                    address=data.get('address'),
+                    timezone=data.get('timezone'),
+                    tzoffset=data.get('tzoffset'),
+                    description=data.get('description'),
+                    alerts=data.get('alerts')
+                )
+                return weather
             else:
-                final_url = f"{self.weather_url}/rest/services/timeline/{long}%2C{lat}?unitGroup=us&key={self.weather_key}&contentType=json"
+                final_url = f"{self.weather_url}/rest/services/timeline/{lat}%2C{long}?unitGroup=us&key={self.weather_key}&contentType=json"
                 async with httpx.AsyncClient() as client:
                     response = await client.get(final_url)
 
                 if response.status_code == 200:
                     data = response.json()
-                    await self.redis_client.setex(cache_key, 86400, json.dumps(data))
+                    # Use thread pool for synchronous Redis write
+                    await asyncio.to_thread(self.redis_client.setex, cache_key, 86400, json.dumps(data))
+                    # Only save to DB for fresh API calls
+                    weather = await asyncio.to_thread(self._save_weather_to_db, data)
+                    return weather
                 else:
                     raise self.WeatherException(f"Weather cannot fetch, status code: {response.status_code}")
-
-            # Run database operations in thread pool to avoid blocking
-            weather = await asyncio.to_thread(self._save_weather_to_db, data)
-            return weather
 
         except Exception as e:
             raise self.WeatherException(str(e))
