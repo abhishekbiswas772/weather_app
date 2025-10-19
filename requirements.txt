@@ -1,0 +1,9 @@
+Flask[async]
+Flask-Smorest
+Flask-SQLAlchemy
+python-dotenv
+psycopg2-binary
+Flask-Limiter
+redis
+requests
+httpx
